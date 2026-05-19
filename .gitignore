@@ -1,0 +1,26 @@
+# --- Entorno Virtual ---
+env/
+venv/
+ENV/
+bin/
+lib/
+share/
+pyvenv.cfg
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Datos y Resultados ---
+# Ignoramos la carpeta data porque los archivos .xlsx pueden ser pesados 
+# y es mejor que el profesor los descargue o los pongas aparte.
+# Si quieres subirlos forzosamente, comenta la siguiente línea:
+data/
+outputs/*.png
+
+# --- IDEs y SO ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
