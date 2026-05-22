@@ -1,14 +1,3 @@
-"""
-========================================================================
-Ajuste de Hiperparámetros de RNA con Algoritmo Híbrido AG-GWO
-========================================================================
-Dataset  : Dry Bean Dataset (clasificación multiclase)
-Modelo   : MLPClassifier (scikit-learn)
-Optimizador: Algoritmo Genético (AG) + Grey Wolf Optimizer (GWO)
-Autores  : Implementación basada en literatura de optimización bioinspirada
-========================================================================
-"""
-
 import os
 import warnings
 import time
@@ -370,10 +359,6 @@ def _dark_axes(ax, title="", xlabel="", ylabel=""):
 def grafica_evolucion(historial: dict, out: str):
     """
     Figura 1 – Evolución del fitness por iteración
-    ┌──────────────────────────────────────┬──────────────────┐
-    │  Curvas: mejor / media / mediana /   │  Desviación std  │
-    │  peor + banda IQR                    │  y Diversidad    │
-    └──────────────────────────────────────┴──────────────────┘
     """
     iters = list(range(1, len(historial["mejor"]) + 1))
 
@@ -728,7 +713,140 @@ def grafica_resumen_hiperparams(historial: dict, mejor_params: dict, out: str):
 
 
 # ─────────────────────────────────────────────────────────────────────
-# 5. PIPELINE PRINCIPAL
+# 5. EXPORTACIÓN DE DATOS EN BRUTO A CSV
+# ─────────────────────────────────────────────────────────────────────
+
+def exportar_csv(historial: dict, mejor_params: dict,
+                 y_te, y_pred, clases, acc_final: float,
+                 out_dir: str):
+    """
+    Genera tres archivos CSV con todos los datos en bruto usados en las gráficas:
+
+    ┌──────────────────────────────────┬──────────────────────────────────────────┐
+    │ Archivo                          │ Contenido                                │
+    ├──────────────────────────────────┼──────────────────────────────────────────┤
+    │ 07_serie_iteraciones.csv         │ Una fila por iteración: mejor, media,    │
+    │                                  │ mediana, peor, std, q1, q3, IQR,         │
+    │                                  │ asimetría, curtosis, diversidad, tiempo  │
+    ├──────────────────────────────────┼──────────────────────────────────────────┤
+    │ 08_fitness_individuos.csv        │ Una fila por (iteración × individuo):    │
+    │                                  │ fitness bruto de cada lobo/cromosoma     │
+    ├──────────────────────────────────┼──────────────────────────────────────────┤
+    │ 09_resultados_finales.csv        │ Hiperparámetros óptimos + métricas       │
+    │                                  │ por clase del reporte de clasificación   │
+    └──────────────────────────────────┴──────────────────────────────────────────┘
+    """
+    from scipy import stats as scipy_stats
+
+    # ── CSV 1: serie temporal por iteración ──────────────────────────
+    n_iter = len(historial["mejor"])
+    iters  = list(range(1, n_iter + 1))
+
+    asimetria  = [scipy_stats.skew(f)     for f in historial["pob_fit"]]
+    curtosis   = [scipy_stats.kurtosis(f) for f in historial["pob_fit"]]
+    iqr        = [q3 - q1 for q3, q1 in zip(historial["q3"], historial["q1"])]
+    mejoras    = list(np.diff([0.0] + historial["mejor"]))
+    tiempo_ac  = list(np.cumsum(historial["tiempo_iter"]))
+
+    df_iter = pd.DataFrame({
+        "iteracion":          iters,
+        "fitness_mejor_alpha":historial["mejor"],
+        "fitness_media":      historial["media"],
+        "fitness_mediana":    historial["mediana"],
+        "fitness_peor":       historial["peor"],
+        "fitness_std":        historial["std"],
+        "percentil_25_q1":    historial["q1"],
+        "percentil_75_q3":    historial["q3"],
+        "iqr_q3_menos_q1":    iqr,
+        "asimetria_skew":     asimetria,
+        "curtosis_kurtosis":  curtosis,
+        "diversidad_geom":    historial["diversidad"],
+        "tiempo_iter_s":      historial["tiempo_iter"],
+        "tiempo_acumulado_s": tiempo_ac,
+        "delta_mejora_alpha": mejoras,
+    })
+    ruta1 = f"{out_dir}/07_serie_iteraciones.csv"
+    df_iter.to_csv(ruta1, index=False, float_format="%.6f")
+    print(f"[CSV]  Guardado: {ruta1}  ({len(df_iter)} filas × {len(df_iter.columns)} cols)")
+
+    # ── CSV 2: fitness de cada individuo por iteración ────────────────
+    registros = []
+    for i, fits in enumerate(historial["pob_fit"], start=1):
+        for j, f in enumerate(fits, start=1):
+            registros.append({"iteracion": i, "individuo": j, "fitness": f})
+
+    df_ind = pd.DataFrame(registros)
+    ruta2 = f"{out_dir}/08_fitness_individuos.csv"
+    df_ind.to_csv(ruta2, index=False, float_format="%.6f")
+    print(f"[CSV]  Guardado: {ruta2}  ({len(df_ind)} filas × {len(df_ind.columns)} cols)")
+
+    # ── CSV 3: hiperparámetros óptimos + reporte por clase ────────────
+    # Bloque 1: hiperparámetros
+    hp = mejor_params
+    filas_hp = [
+        {"seccion": "hiperparametros", "campo": "arquitectura_capas",
+         "valor": str(hp["hidden_layer_sizes"])},
+        {"seccion": "hiperparametros", "campo": "alpha_regularizacion",
+         "valor": f"{hp['alpha']:.8f}"},
+        {"seccion": "hiperparametros", "campo": "learning_rate_init",
+         "valor": f"{hp['learning_rate_init']:.8f}"},
+        {"seccion": "hiperparametros", "campo": "activacion",
+         "valor": hp["activation"]},
+        {"seccion": "hiperparametros", "campo": "solver",
+         "valor": hp["solver"]},
+        {"seccion": "hiperparametros", "campo": "max_iter",
+         "valor": str(hp["max_iter"])},
+        {"seccion": "hiperparametros", "campo": "early_stopping",
+         "valor": str(hp["early_stopping"])},
+        {"seccion": "proceso",         "campo": "fitness_alpha_final",
+         "valor": f"{historial['mejor'][-1]:.6f}"},
+        {"seccion": "proceso",         "campo": "media_final_poblacion",
+         "valor": f"{historial['media'][-1]:.6f}"},
+        {"seccion": "proceso",         "campo": "std_final_poblacion",
+         "valor": f"{historial['std'][-1]:.6f}"},
+        {"seccion": "proceso",         "campo": "total_evaluaciones_mlp",
+         "valor": str(n_iter * len(historial["pob_fit"][0]))},
+        {"seccion": "proceso",         "campo": "tiempo_total_s",
+         "valor": f"{sum(historial['tiempo_iter']):.2f}"},
+        {"seccion": "evaluacion_final","campo": "accuracy_prueba",
+         "valor": f"{acc_final:.6f}"},
+    ]
+
+    # Bloque 2: métricas por clase (precision, recall, f1, support)
+    from sklearn.metrics import precision_recall_fscore_support
+    prec, rec, f1, sup = precision_recall_fscore_support(
+        y_te, y_pred, labels=range(len(clases))
+    )
+    for idx, cls in enumerate(clases):
+        filas_hp.append({
+            "seccion": "reporte_por_clase",
+            "campo":   f"{cls}_precision",
+            "valor":   f"{prec[idx]:.6f}",
+        })
+        filas_hp.append({
+            "seccion": "reporte_por_clase",
+            "campo":   f"{cls}_recall",
+            "valor":   f"{rec[idx]:.6f}",
+        })
+        filas_hp.append({
+            "seccion": "reporte_por_clase",
+            "campo":   f"{cls}_f1_score",
+            "valor":   f"{f1[idx]:.6f}",
+        })
+        filas_hp.append({
+            "seccion": "reporte_por_clase",
+            "campo":   f"{cls}_support",
+            "valor":   str(int(sup[idx])),
+        })
+
+    df_res = pd.DataFrame(filas_hp)
+    ruta3 = f"{out_dir}/09_resultados_finales.csv"
+    df_res.to_csv(ruta3, index=False)
+    print(f"[CSV]  Guardado: {ruta3}  ({len(df_res)} filas × {len(df_res.columns)} cols)")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 6. PIPELINE PRINCIPAL
 # ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -788,5 +906,10 @@ if __name__ == "__main__":
     grafica_resumen_hiperparams(historial, mejores_params,
         f"{OUT_DIR}/06_resumen_final.png")
 
-    print(f"\n[DONE] Todas las gráficas guardadas en '{OUT_DIR}/'")
+    # ── Paso 5: Exportar CSV ──────────────────────────────────────────
+    print("\n[CSV] Exportando datos en bruto ...\n")
+    exportar_csv(historial, mejores_params, y_te, y_pred,
+                 le.classes_, acc_final, OUT_DIR)
+
+    print(f"\n[DONE] Graficas y CSVs guardados en '{OUT_DIR}/'")
     print(f"[DONE] Accuracy final en prueba: {acc_final:.4f}")
