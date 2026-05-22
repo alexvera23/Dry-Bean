@@ -42,10 +42,7 @@ STYLE_PARAMS = dict(
 
 def preparar_datos(path: str = "data/Dry_Bean_Dataset.xlsx"):
     """
-    Carga el dataset, codifica etiquetas y genera tres particiones:
-      • Entrenamiento interno (X_tr / y_tr) → evalúa candidatos del optimizador
-      • Validación          (X_va / y_va) → calcula fitness
-      • Prueba              (X_te / y_te) → evaluación final sin sesgo
+    Carga el dataset, codifica etiquetas y genera tres particiones
 
     La división es ESTRATIFICADA para mantener la distribución de clases.
     """
@@ -100,14 +97,6 @@ def decodificar(pos: np.ndarray) -> dict:
     """
     Mapea un vector continuo de 5 dimensiones en [-1, 1]
     a hiperparámetros concretos del MLPClassifier.
-
-    Dimensión  Rango origen  Hiperparámetro         Rango destino
-    ─────────  ────────────  ─────────────────────  ──────────────
-    0          [-1, 1]       Neuronas capa 1         [10, 150]
-    1          [-1, 1]       Neuronas capa 2         [0, 80]
-    2          [-1, 1]       Alpha (regularización)  [1e-5, 1e-1]
-    3          [-1, 1]       Tasa de aprendizaje     [1e-4, 1e-1]
-    4          [-1, 1]       Función de activación   {tanh, relu, logistic}
     """
     n1 = max(10, int(10 + (pos[0] + 1) / 2 * 140))
     n2 = int((pos[1] + 1) / 2 * 80)
@@ -150,27 +139,8 @@ def evaluar_individuo(pos: np.ndarray, X_tr, y_tr, X_va, y_va) -> float:
 class HibridoAGGWO:
     """
     Optimizador híbrido que combina:
-
     GWO  (Grey Wolf Optimizer)
-    ──────────────────────────
-    Simula la jerarquía de liderazgo de los lobos grises:
-      α (Alpha)  → mejor solución
-      β (Beta)   → segunda mejor
-      δ (Delta)  → tercera mejor
-    Cada individuo ajusta su posición como promedio ponderado de los tres líderes.
-
     AG  (Algoritmo Genético)
-    ────────────────────────
-    Operadores de selección por torneo, cruce aritmético y mutación gaussiana
-    que diversifican la búsqueda y evitan la convergencia prematura.
-
-    Parámetros
-    ──────────
-    tam_pob   : tamaño de la población
-    max_iter  : iteraciones de optimización
-    pc        : probabilidad de cruce (crossover)
-    pm        : probabilidad de mutación
-    sigma_mut : desviación estándar de la mutación gaussiana
     """
 
     def __init__(
@@ -721,20 +691,6 @@ def exportar_csv(historial: dict, mejor_params: dict,
                  out_dir: str):
     """
     Genera tres archivos CSV con todos los datos en bruto usados en las gráficas:
-
-    ┌──────────────────────────────────┬──────────────────────────────────────────┐
-    │ Archivo                          │ Contenido                                │
-    ├──────────────────────────────────┼──────────────────────────────────────────┤
-    │ 07_serie_iteraciones.csv         │ Una fila por iteración: mejor, media,    │
-    │                                  │ mediana, peor, std, q1, q3, IQR,         │
-    │                                  │ asimetría, curtosis, diversidad, tiempo  │
-    ├──────────────────────────────────┼──────────────────────────────────────────┤
-    │ 08_fitness_individuos.csv        │ Una fila por (iteración × individuo):    │
-    │                                  │ fitness bruto de cada lobo/cromosoma     │
-    ├──────────────────────────────────┼──────────────────────────────────────────┤
-    │ 09_resultados_finales.csv        │ Hiperparámetros óptimos + métricas       │
-    │                                  │ por clase del reporte de clasificación   │
-    └──────────────────────────────────┴──────────────────────────────────────────┘
     """
     from scipy import stats as scipy_stats
 
